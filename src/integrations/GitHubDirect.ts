@@ -157,7 +157,7 @@ export class GitHubDirect {
   /**
    * Push files to repository using git commands
    */
-  private async pushFilesToRepo(workspacePath: string, cloneUrl: string, repoName: string): Promise<void> {
+  private async pushFilesToRepo(workspacePath: string, cloneUrl: string, _repoName: string): Promise<void> {
     console.log('[GitHub Direct] Pushing files to repository...');
 
     try {
