@@ -1,0 +1,44 @@
+{
+  "name": "neuronix-hackathon",
+  "version": "1.0.0",
+  "description": "Autonomous IT company - Multi-agent system that creates complete projects from brief to deployment",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "type-check": "tsc --noEmit",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "vercel-deploy": "vercel --prod",
+    "setup-vercel": "vercel link"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "@vercel/sdk": "^1.2.1",
+    "next": "14.2.18",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "lucide-react": "^0.460.0",
+    "typescript": "^5.6.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.6",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "tailwindcss": "^3.4.14",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "jest": "^29.7.0",
+    "@testing-library/react": "^14.3.1",
+    "@testing-library/jest-dom": "^6.6.3",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "14.2.18"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
