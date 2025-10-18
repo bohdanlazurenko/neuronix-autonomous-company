@@ -5,7 +5,7 @@
 
 import { createPMAgent } from '../agents/PMAgent';
 import { createDevAgent } from '../agents/DevAgent';
-import { createGitHubIntegration } from '../integrations/GitHubMCP';
+import { GitHubDirect } from '../integrations/GitHubDirect';
 import { createVercelIntegration } from '../integrations/VercelMCP';
 import {
   ProjectResult,
@@ -88,9 +88,9 @@ export class ProjectOrchestrator {
         60,
         onStatus
       );
-      const githubIntegration = createGitHubIntegration({
-        githubToken: this.config.githubToken,
-        anthropicApiKey: this.config.anthropicApiKey,
+      const githubIntegration = new GitHubDirect({
+        githubToken: this.config.githubToken!,
+        owner: process.env.GITHUB_USERNAME || 'neuronix-user',
         workspaceDir: this.config.workspaceDir,
       });
       const githubResult = await githubIntegration.createProject(
@@ -143,33 +143,8 @@ export class ProjectOrchestrator {
         }
       }
 
-      // Step 5: Configure CI/CD (optional)
-      if (vercelResult && this.config.vercelToken) {
-        this.emitStatus(
-          'configuring_ci',
-          '⚙️ Настраиваю GitHub Actions и секреты...',
-          95,
-          onStatus
-        );
-
-        try {
-          await githubIntegration.setupGitHubSecrets(githubResult.repoUrl, {
-            VERCEL_TOKEN: this.config.vercelToken,
-            VERCEL_ORG_ID: process.env.VERCEL_ORG_ID || '',
-            VERCEL_PROJECT_ID: vercelResult.projectId,
-          });
-
-          this.emitStatus(
-            'configuring_ci',
-            '✅ CI/CD настроен',
-            98,
-            onStatus
-          );
-        } catch (error) {
-          console.error('[Orchestrator] CI/CD setup failed:', error);
-          // Non-critical, continue
-        }
-      }
+      // Step 5: CI/CD setup skipped for now (can be added later)
+      // GitHub Actions workflows are included in generated files
 
       // Calculate total duration
       const totalDuration = Math.round((Date.now() - startTime) / 1000);

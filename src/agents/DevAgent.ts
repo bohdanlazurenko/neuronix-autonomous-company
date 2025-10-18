@@ -17,7 +17,7 @@ import {
 const DEFAULT_CONFIG: DevAgentConfig = {
   model: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'glm-4.6', // Use GLM-4.6 via Z.AI
   maxTokens: 16000,
-  temperature: 0.5,
+  temperature: 0.1, // Lower temperature for more deterministic JSON output
   timeout: 120000, // 120 seconds
   requiredFiles: [
     'package.json',
@@ -32,32 +32,50 @@ const DEFAULT_CONFIG: DevAgentConfig = {
 };
 
 // System prompt for Dev Agent
-const SYSTEM_PROMPT = `Ты - senior full-stack разработчик автономной ИТ компании Neuronix.
+const SYSTEM_PROMPT = `You are a senior full-stack developer at Neuronix, an autonomous IT company.
 
-ЗАДАЧА: Сгенерировать ВСЕ файлы проекта по спецификации.
+YOUR TASK: Generate ALL project files according to the specification.
 
-КРИТИЧЕСКИ ВАЖНО ДЛЯ ФОРМАТА ОТВЕТА:
-1. Твой ответ должен быть ТОЛЬКО валидный JSON
-2. Используй ТОЛЬКО двойные кавычки (") для всех строк
-3. НЕ используй одинарные кавычки (')
-4. Без пояснений, комментариев, markdown
-5. Экранируй специальные символы внутри строк: \\n для новой строки, \\" для кавычек
+⚠️ CRITICAL: OUTPUT FORMAT REQUIREMENTS ⚠️
 
-ФОРМАТ ВЫВОДА (строго JSON):
+YOUR ENTIRE RESPONSE MUST BE VALID JSON AND NOTHING ELSE.
+
+Start your response IMMEDIATELY with { and end with }
+DO NOT include ANY text before or after the JSON.
+DO NOT use markdown code blocks (no \`\`\`).
+DO NOT add explanations, comments, or instructions.
+DO NOT output bash commands or installation instructions.
+
+REQUIRED JSON STRUCTURE:
 {
   "files": [
-    {"path": "package.json", "content": "{...}"},
-    {"path": "app/page.tsx", "content": "export default..."},
-    {"path": "app/layout.tsx", "content": "export default..."}
+    {"path": "package.json", "content": "..."},
+    {"path": "app/page.tsx", "content": "..."}
   ]
 }
 
-ЗАПРЕЩЕНО:
-- Пояснения до или после JSON
-- Markdown блоки (три backtick или похожее)
-- Комментарии
-- Одинарные кавычки внутри JSON
-Только чистый валидный JSON!
+JSON FORMATTING RULES:
+1. Use ONLY double quotes (") for all strings
+2. Never use single quotes (')
+3. Escape special characters: \\n for newlines, \\" for quotes, \\\\ for backslashes
+4. All file content must be valid strings with proper escaping
+5. No trailing commas
+
+❌ FORBIDDEN ❌
+- Any text before the opening {
+- Any text after the closing }
+- Markdown blocks like \`\`\`json or \`\`\`bash
+- Installation commands (npm install, npm run dev, etc.)
+- Comments or explanations
+- Single quotes inside JSON
+
+✅ CORRECT EXAMPLE ✅
+{"files":[{"path":"package.json","content":"{\\"name\\":\\"test\\"}"}]}
+
+❌ WRONG EXAMPLES ❌
+Here is the code: (followed by JSON)
+Installation commands before JSON
+Text explanations mixed with JSON
 
 КРИТИЧЕСКИЕ ТРЕБОВАНИЯ:
 
@@ -306,7 +324,7 @@ export class DevAgent {
           messages: [
             {
               role: 'user',
-              content: `План разработки:\n${planDescription}\n\nСгенерируй ВСЕ файлы проекта.\n\nКРИТИЧЕСКИ ВАЖНО: Ответ должен быть ТОЛЬКО валидный JSON с двойными кавычками для всех строк. Не используй одинарные кавычки.`,
+              content: `Development Plan:\n${planDescription}\n\n⚠️ CRITICAL: Your response MUST start with { and end with } - nothing else!\n\nDO NOT include:\n- bash commands (npm install, npm run dev)\n- markdown code blocks\n- explanations or text\n\nONLY output valid JSON following this exact structure:\n{"files":[{"path":"...","content":"..."}]}\n\nGenerate ALL project files now. Start your response with {`,
             },
           ],
         },
@@ -348,87 +366,138 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
 
     const text = textContent.text.trim();
     console.log('[Dev Agent] Raw response length:', text.length);
-    console.log('[Dev Agent] Raw response START (first 500 chars):', text.substring(0, 500));
-    console.log('[Dev Agent] Raw response END (last 300 chars):', text.substring(Math.max(0, text.length - 300)));
+    console.log('[Dev Agent] Raw response preview:', text.substring(0, 200));
 
-    // Try to extract JSON from response
-    let jsonText = text;
+    // Strategy 1: Try to parse entire response as JSON (ideal case)
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && parsed.files) {
+        console.log('[Dev Agent] ✅ Successfully parsed raw response as JSON');
+        return parsed;
+      }
+    } catch (e) {
+      console.log('[Dev Agent] Raw response is not pure JSON, will extract...');
+    }
 
-    // Remove markdown code blocks if present - find ALL blocks and choose the JSON one
+    // Strategy 2: Find JSON object boundaries (look for {"files": pattern)
+    const jsonPattern = /\{\s*"files"\s*:\s*\[/;
+    const jsonMatch = text.search(jsonPattern);
+    
+    if (jsonMatch !== -1) {
+      console.log('[Dev Agent] Found JSON start at position:', jsonMatch);
+      
+      // Find matching closing brace by counting brackets
+      let jsonText = text.substring(jsonMatch);
+      let braceCount = 0;
+      let inString = false;
+      let escapeNext = false;
+      let endPos = -1;
+      
+      for (let i = 0; i < jsonText.length; i++) {
+        const char = jsonText[i];
+        
+        if (escapeNext) {
+          escapeNext = false;
+          continue;
+        }
+        
+        if (char === '\\') {
+          escapeNext = true;
+          continue;
+        }
+        
+        if (char === '"' && !escapeNext) {
+          inString = !inString;
+          continue;
+        }
+        
+        if (inString) continue;
+        
+        if (char === '{') braceCount++;
+        if (char === '}') {
+          braceCount--;
+          if (braceCount === 0) {
+            endPos = i + 1;
+            break;
+          }
+        }
+      }
+      
+      if (endPos > 0) {
+        jsonText = jsonText.substring(0, endPos);
+        console.log('[Dev Agent] Extracted JSON by bracket matching, length:', jsonText.length);
+        
+        try {
+          const parsed = JSON.parse(jsonText);
+          if (parsed && parsed.files) {
+            console.log('[Dev Agent] ✅ Successfully parsed extracted JSON');
+            return parsed;
+          }
+        } catch (e) {
+          console.warn('[Dev Agent] Failed to parse extracted JSON:', e instanceof Error ? e.message : e);
+        }
+      }
+    }
+
+    // Strategy 3: Try to find JSON in code blocks
     const codeBlockMatches = text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g);
     const blocks = Array.from(codeBlockMatches);
     
     if (blocks.length > 0) {
-      console.log('[Dev Agent] Found', blocks.length, 'code blocks');
+      console.log('[Dev Agent] Found', blocks.length, 'code blocks, testing each...');
       
-      // Debug: show first 100 chars of each block
-      blocks.forEach((block, index) => {
-        const content = block[1].trim();
-        console.log(`[Dev Agent] Block ${index}: starts with "${content.substring(0, 50)}", length: ${content.length}`);
-      });
-      
-      // Find the block that starts with { (JSON object)
-      const jsonBlock = blocks.find(block => block[1].trim().startsWith('{'));
-      
-      if (jsonBlock) {
-        jsonText = jsonBlock[1].trim();
-        console.log('[Dev Agent] Extracted JSON block, length:', jsonText.length);
-      } else {
-        // Fallback to largest block
-        const largestBlock = blocks.reduce((max, current) => {
-          return current[1].length > max[1].length ? current : max;
-        });
-        jsonText = largestBlock[1].trim();
-        console.log('[Dev Agent] No JSON block found, using largest block');
-      }
-    }
-
-    // Try to find JSON object boundaries
-    const jsonStart = jsonText.indexOf('{');
-    const jsonEnd = jsonText.lastIndexOf('}');
-    
-    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-      jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
-      console.log('[Dev Agent] Extracted JSON from boundaries, length:', jsonText.length);
-    }
-
-    // Fix common JSON issues from Z.AI
-    let parsed: any;
-    try {
-      // First try parsing as-is
-      parsed = JSON.parse(jsonText);
-    } catch (firstError) {
-      console.warn('[Dev Agent] Initial parse failed, attempting to fix JSON...');
-      
-      try {
-        // Try to fix single quotes issue - simple approach
-        // This is a naive fix but may work for simple cases
-        const fixedJson = jsonText
-          .replace(/\\'/g, "ESCAPED_SINGLE_QUOTE") // Temporarily replace escaped single quotes
-          .replace(/'/g, '"') // Replace all single quotes with double quotes
-          .replace(/ESCAPED_SINGLE_QUOTE/g, "'"); // Restore escaped single quotes
+      for (let i = 0; i < blocks.length; i++) {
+        const blockContent = blocks[i][1].trim();
         
-        parsed = JSON.parse(fixedJson);
-        console.log('[Dev Agent] Successfully fixed and parsed JSON');
-      } catch (secondError) {
-        console.error('[Dev Agent] Failed to parse JSON even after fixing');
-        console.error('[Dev Agent] First 1000 chars:', jsonText.substring(0, 1000));
-        console.error('[Dev Agent] Last 500 chars:', jsonText.substring(Math.max(0, jsonText.length - 500)));
-        console.error('[Dev Agent] Parse error:', firstError instanceof Error ? firstError.message : firstError);
-        throw new AgentError('Failed to parse Dev Agent response as JSON', 'Dev', firstError);
+        // Try to parse each block
+        if (blockContent.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(blockContent);
+            if (parsed && parsed.files) {
+              console.log(`[Dev Agent] ✅ Successfully parsed code block ${i} as JSON`);
+              return parsed;
+            }
+          } catch (e) {
+            console.log(`[Dev Agent] Block ${i} is not valid JSON`);
+          }
+        }
       }
     }
+
+    // Strategy 4: Last resort - try to fix common issues and parse
+    console.warn('[Dev Agent] All extraction strategies failed, trying fixes...');
     
-    // Validate basic structure
-    if (!parsed || typeof parsed !== 'object') {
-      throw new ValidationError('Parsed result is not an object', 'response', parsed);
+    let jsonText = text;
+    
+    // Remove everything before first {
+    const firstBrace = jsonText.indexOf('{');
+    if (firstBrace > 0) {
+      jsonText = jsonText.substring(firstBrace);
     }
     
-    if (!parsed.files) {
-      throw new ValidationError('Missing "files" property in response', 'response.files', parsed);
+    // Remove everything after last }
+    const lastBrace = jsonText.lastIndexOf('}');
+    if (lastBrace !== -1) {
+      jsonText = jsonText.substring(0, lastBrace + 1);
     }
     
-    return parsed;
+    try {
+      const parsed = JSON.parse(jsonText);
+      if (parsed && parsed.files) {
+        console.log('[Dev Agent] ✅ Successfully parsed after cleanup');
+        return parsed;
+      }
+    } catch (e) {
+      console.error('[Dev Agent] ❌ All parsing strategies failed');
+      console.error('[Dev Agent] Text sample:', jsonText.substring(0, 500));
+      throw new AgentError(
+        'Failed to parse Dev Agent response as JSON. The AI returned invalid format.',
+        'Dev',
+        e
+      );
+    }
+
+    throw new AgentError('Failed to extract valid JSON from response', 'Dev');
   }
 
   /**

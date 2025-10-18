@@ -90,7 +90,7 @@ export class GitHubIntegration {
   }
 
   /**
-   * Get available MCP tools
+   * Get available MCP tools and convert to Z.AI format
    */
   private async getTools(): Promise<any[]> {
     if (!this.mcpClient) {
@@ -99,7 +99,19 @@ export class GitHubIntegration {
 
     try {
       const response = await this.mcpClient!.listTools();
-      return response.tools;
+      
+      // Convert MCP tools format to Z.AI format
+      // Z.AI expects "input_schema" instead of "inputSchema"
+      const convertedTools = response.tools.map((tool: any) => {
+        const converted = { ...tool };
+        if (tool.inputSchema) {
+          converted.input_schema = tool.inputSchema;
+          delete converted.inputSchema;
+        }
+        return converted;
+      });
+      
+      return convertedTools;
     } catch (error) {
       console.error('[GitHub MCP] Failed to list tools:', error);
       return [];
