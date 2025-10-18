@@ -36,6 +36,8 @@ const SYSTEM_PROMPT = `Ты - senior full-stack разработчик авто�
 
 ЗАДАЧА: Сгенерировать ВСЕ файлы проекта по спецификации.
 
+КРИТИЧЕСКИ ВАЖНО: Твой ответ должен быть ТОЛЬКО валидный JSON, без каких-либо дополнительных пояснений, комментариев или markdown форматирования.
+
 ФОРМАТ ВЫВОДА (строго JSON):
 {
   "files": [
@@ -44,6 +46,12 @@ const SYSTEM_PROMPT = `Ты - senior full-stack разработчик авто�
     {"path": "app/layout.tsx", "content": "export default..."}
   ]
 }
+
+НЕ добавляй в ответ:
+- Никаких пояснений до или после JSON
+- Никаких markdown блоков (```json или ```)
+- Никаких комментариев
+Только чистый JSON объект!
 
 КРИТИЧЕСКИЕ ТРЕБОВАНИЯ:
 
@@ -342,22 +350,42 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     if (text.includes('```json')) {
       const match = text.match(/```json\s*([\s\S]*?)\s*```/);
       if (match) {
-        jsonText = match[1];
+        jsonText = match[1].trim();
       }
     } else if (text.includes('```')) {
       const match = text.match(/```\s*([\s\S]*?)\s*```/);
       if (match) {
-        jsonText = match[1];
+        jsonText = match[1].trim();
       }
+    }
+
+    // Try to find JSON object boundaries
+    const jsonStart = jsonText.indexOf('{');
+    const jsonEnd = jsonText.lastIndexOf('}');
+    
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
     }
 
     // Parse JSON
     try {
       const parsed = JSON.parse(jsonText);
+      
+      // Validate basic structure
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Parsed result is not an object');
+      }
+      
+      if (!parsed.files) {
+        throw new Error('Missing "files" property in response');
+      }
+      
       return parsed;
     } catch (error) {
       console.error('[Dev Agent] Failed to parse JSON');
-      console.error('[Dev Agent] First 500 chars:', jsonText.substring(0, 500));
+      console.error('[Dev Agent] First 1000 chars:', jsonText.substring(0, 1000));
+      console.error('[Dev Agent] Last 500 chars:', jsonText.substring(Math.max(0, jsonText.length - 500)));
+      console.error('[Dev Agent] Parse error:', error instanceof Error ? error.message : error);
       throw new AgentError('Failed to parse Dev Agent response as JSON', 'Dev', error);
     }
   }

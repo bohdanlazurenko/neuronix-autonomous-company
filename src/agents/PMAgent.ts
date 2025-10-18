@@ -26,6 +26,8 @@ const SYSTEM_PROMPT = `Ты - продакт-менеджер автономно
 
 ЗАДАЧА: Преобразовать бриф в PRD и план разработки.
 
+КРИТИЧЕСКИ ВАЖНО: Твой ответ должен быть ТОЛЬКО валидный JSON, без каких-либо дополнительных пояснений, комментариев или markdown форматирования.
+
 ФОРМАТ ВЫВОДА (строго JSON):
 {
   "prd": "# PRD\\n## Цель\\n[описание]\\n## Фичи\\n[список]\\n## Технические требования\\n[список]",
@@ -46,6 +48,12 @@ const SYSTEM_PROMPT = `Ты - продакт-менеджер автономно
     ]
   }
 }
+
+НЕ добавляй в ответ:
+- Никаких пояснений до или после JSON
+- Никаких markdown блоков (```json или ```)
+- Никаких комментариев
+Только чистый JSON объект!
 
 ТРЕБОВАНИЯ:
 - Конкретные пути файлов в формате Next.js 14 App Router (app/, lib/, components/)
@@ -173,7 +181,7 @@ export class PMAgent {
     }
 
     const text = textContent.text.trim();
-    console.log('[PM Agent] Raw response:', text.substring(0, 200) + '...');
+    console.log('[PM Agent] Raw response length:', text.length);
 
     // Try to extract JSON from response
     let jsonText = text;
@@ -182,21 +190,42 @@ export class PMAgent {
     if (text.includes('```json')) {
       const match = text.match(/```json\s*([\s\S]*?)\s*```/);
       if (match) {
-        jsonText = match[1];
+        jsonText = match[1].trim();
       }
     } else if (text.includes('```')) {
       const match = text.match(/```\s*([\s\S]*?)\s*```/);
       if (match) {
-        jsonText = match[1];
+        jsonText = match[1].trim();
       }
+    }
+
+    // Try to find JSON object boundaries
+    const jsonStart = jsonText.indexOf('{');
+    const jsonEnd = jsonText.lastIndexOf('}');
+    
+    if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+      jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
     }
 
     // Parse JSON
     try {
       const parsed = JSON.parse(jsonText);
+      
+      // Validate basic structure
+      if (!parsed || typeof parsed !== 'object') {
+        throw new Error('Parsed result is not an object');
+      }
+      
+      if (!parsed.prd || !parsed.plan) {
+        throw new Error('Missing "prd" or "plan" property in response');
+      }
+      
       return parsed as PMAgentResult;
     } catch (error) {
-      console.error('[PM Agent] Failed to parse JSON:', jsonText);
+      console.error('[PM Agent] Failed to parse JSON');
+      console.error('[PM Agent] First 500 chars:', jsonText.substring(0, 500));
+      console.error('[PM Agent] Last 300 chars:', jsonText.substring(Math.max(0, jsonText.length - 300)));
+      console.error('[PM Agent] Parse error:', error instanceof Error ? error.message : error);
       throw new AgentError(
         'Failed to parse PM Agent response as JSON',
         'PM',
