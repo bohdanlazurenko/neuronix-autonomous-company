@@ -244,6 +244,31 @@ export class VercelIntegration {
   }
 
   /**
+   * Get GitHub repository ID
+   */
+  private async getGitHubRepoId(fullRepoName: string): Promise<number> {
+    try {
+      console.log('[Vercel] Fetching GitHub repo ID for:', fullRepoName);
+      const response = await fetch(`https://api.github.com/repos/${fullRepoName}`, {
+        headers: {
+          'Accept': 'application/vnd.github.v3+json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`GitHub API error: ${response.status}`);
+      }
+
+      const repo = await response.json();
+      console.log('[Vercel] GitHub repo ID:', repo.id);
+      return repo.id;
+    } catch (error) {
+      console.error('[Vercel] Failed to get GitHub repo ID:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Trigger deployment from GitHub repository
    */
   private async triggerDeploymentFromGitHub(projectId: string, fullRepoName: string): Promise<any> {
@@ -252,7 +277,10 @@ export class VercelIntegration {
     console.log('[Vercel] Repo:', fullRepoName);
 
     try {
-      // Create deployment directly via Vercel Deployments API
+      // Step 1: Get GitHub repository ID
+      const repoId = await this.getGitHubRepoId(fullRepoName);
+      
+      // Step 2: Create deployment via Vercel Deployments API
       console.log('[Vercel] Creating deployment via API...');
       
       const deploymentData = {
@@ -260,7 +288,7 @@ export class VercelIntegration {
         gitSource: {
           type: 'github',
           ref: 'main',
-          repo: fullRepoName,
+          repoId: repoId,
         },
         target: 'production',
       };
