@@ -354,17 +354,27 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     // Try to extract JSON from response
     let jsonText = text;
 
-    // Remove markdown code blocks if present - find ALL blocks and choose the largest
+    // Remove markdown code blocks if present - find ALL blocks and choose the JSON one
     const codeBlockMatches = text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g);
     const blocks = Array.from(codeBlockMatches);
     
     if (blocks.length > 0) {
-      // Find the largest block (most likely to contain the full JSON)
-      const largestBlock = blocks.reduce((max, current) => {
-        return current[1].length > max[1].length ? current : max;
-      });
-      jsonText = largestBlock[1].trim();
-      console.log('[Dev Agent] Extracted from code block, found', blocks.length, 'blocks, using largest');
+      console.log('[Dev Agent] Found', blocks.length, 'code blocks');
+      
+      // Find the block that starts with { (JSON object)
+      const jsonBlock = blocks.find(block => block[1].trim().startsWith('{'));
+      
+      if (jsonBlock) {
+        jsonText = jsonBlock[1].trim();
+        console.log('[Dev Agent] Extracted JSON block, length:', jsonText.length);
+      } else {
+        // Fallback to largest block
+        const largestBlock = blocks.reduce((max, current) => {
+          return current[1].length > max[1].length ? current : max;
+        });
+        jsonText = largestBlock[1].trim();
+        console.log('[Dev Agent] No JSON block found, using largest block');
+      }
     }
 
     // Try to find JSON object boundaries
