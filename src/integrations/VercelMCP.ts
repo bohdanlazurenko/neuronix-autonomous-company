@@ -252,65 +252,66 @@ export class VercelIntegration {
     console.log('[Vercel] Repo:', fullRepoName);
 
     try {
-      // Step 1: Get deploy hooks for project
-      let deployHook = '';
+      // Create deployment directly via Vercel Deployments API
+      console.log('[Vercel] Creating deployment via API...');
       
+      const deploymentData = {
+        name: projectId,
+        gitSource: {
+          type: 'github',
+          ref: 'main',
+          repo: fullRepoName,
+        },
+        target: 'production',
+      };
+
+      console.log('[Vercel] Deployment data:', JSON.stringify(deploymentData, null, 2));
+
+      const deployment = await this.apiRequest(
+        'POST',
+        '/v13/deployments',
+        deploymentData
+      );
+
+      console.log('[Vercel] ✅ Deployment created:', deployment.id || deployment.uid);
+      return deployment;
+    } catch (error) {
+      console.error('[Vercel] Failed to create deployment via API:', error);
+      
+      // Fallback: Try deploy hook method
       try {
+        console.log('[Vercel] Trying fallback with deploy hook...');
         const hooks = await this.apiRequest('GET', `/v1/projects/${projectId}/deploy-hooks`);
         
         if (hooks && Array.isArray(hooks) && hooks.length > 0) {
-          deployHook = hooks[0].url;
-          console.log('[Vercel] Found existing deploy hook:', deployHook);
-        } else {
-          console.log('[Vercel] No deploy hooks found for project');
+          const deployHook = hooks[0].url;
+          console.log('[Vercel] Triggering deploy hook:', deployHook);
+          
+          await fetch(deployHook, { 
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          });
+          
+          // Wait and poll for deployment
+          await this.sleep(5000);
+          
+          for (let i = 0; i < 6; i++) {
+            const deployments = await this.apiRequest(
+              'GET',
+              `/v6/deployments?projectId=${projectId}&limit=1`
+            );
+
+            if (deployments.deployments && deployments.deployments.length > 0) {
+              console.log('[Vercel] ✅ Found deployment via hook');
+              return deployments.deployments[0];
+            }
+            await this.sleep(5000);
+          }
         }
-      } catch (error) {
-        console.warn('[Vercel] Failed to get deploy hooks:', error);
+      } catch (fallbackError) {
+        console.error('[Vercel] Fallback also failed:', fallbackError);
       }
 
-      // Step 2: Trigger deployment via hook
-      if (deployHook) {
-        console.log('[Vercel] Triggering deployment via deploy hook...');
-        const hookResponse = await fetch(deployHook, { 
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-        });
-        
-        if (hookResponse.ok) {
-          console.log('[Vercel] Deploy hook triggered successfully');
-        } else {
-          console.warn('[Vercel] Deploy hook returned:', hookResponse.status);
-        }
-        
-        await this.sleep(5000); // Give Vercel time to start deployment
-      } else {
-        console.log('[Vercel] No deploy hook found, waiting for GitHub webhook...');
-        await this.sleep(10000);
-      }
-      
-      // Step 3: Poll for deployment (up to 60 seconds)
-      for (let i = 0; i < 12; i++) {
-        console.log(`[Vercel] Polling for deployment (attempt ${i + 1}/12)...`);
-        
-        const deployments = await this.apiRequest(
-          'GET',
-          `/v6/deployments?projectId=${projectId}&limit=1`
-        );
-
-        if (deployments.deployments && deployments.deployments.length > 0) {
-          const deployment = deployments.deployments[0];
-          console.log('[Vercel] ✅ Found deployment:', deployment.uid);
-          return deployment;
-        }
-
-        await this.sleep(5000); // Wait 5 seconds between checks
-      }
-
-      throw new Error('No deployment found after 60 seconds of polling');
-    } catch (error) {
-      console.error('[Vercel] Failed to trigger deployment:', error);
       throw new AgentError('Failed to trigger Vercel deployment', 'Vercel', error);
     }
   }
