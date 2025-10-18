@@ -222,30 +222,58 @@ export class VercelIntegration {
     console.log('[Vercel] Repo:', fullRepoName);
 
     try {
-      // Create deployment using Vercel API
-      // For GitHub-linked projects, Vercel automatically deploys on push
-      // We can trigger a redeploy or just wait for auto-deploy
-      
-      // Option 1: Wait for auto-deployment (best practice)
-      console.log('[Vercel] Waiting for automatic GitHub deployment...');
-      await this.sleep(5000); // Give Vercel time to detect the push
-      
-      // Get latest deployment for this project
-      const deployments = await this.apiRequest(
-        'GET',
-        `/v6/deployments?projectId=${projectId}&limit=1`
-      );
-
-      if (deployments.deployments && deployments.deployments.length > 0) {
-        const deployment = deployments.deployments[0];
-        console.log('[Vercel] Found deployment:', deployment.uid);
-        return deployment;
+      // Step 1: Create a deploy hook if not exists
+      console.log('[Vercel] Creating deploy hook...');
+      let deployHook;
+      try {
+        const hooks = await this.apiRequest(
+          'POST',
+          `/v1/integrations/deploy/${projectId}/hook`,
+          { name: 'neuronix-auto-deploy' }
+        );
+        deployHook = hooks.url;
+        console.log('[Vercel] Deploy hook created:', deployHook);
+      } catch (error) {
+        console.log('[Vercel] Could not create hook, trying to get existing hooks...');
+        // Hook might already exist, try to get it
+        const project = await this.apiRequest('GET', `/v9/projects/${projectId}`);
+        if (project.link?.deployHooks && project.link.deployHooks.length > 0) {
+          deployHook = project.link.deployHooks[0].url;
+          console.log('[Vercel] Using existing deploy hook');
+        }
       }
 
-      // Option 2: If no deployment found, trigger hook
-      throw new Error('No deployment found after GitHub push');
+      // Step 2: Trigger deployment via hook
+      if (deployHook) {
+        console.log('[Vercel] Triggering deployment via hook...');
+        await fetch(deployHook, { method: 'POST' });
+        console.log('[Vercel] Deploy hook triggered');
+        await this.sleep(3000); // Give Vercel time to start deployment
+      } else {
+        console.log('[Vercel] No deploy hook available, waiting for auto-deploy...');
+        await this.sleep(10000); // Wait longer for auto-deployment
+      }
+      
+      // Step 3: Poll for deployment
+      for (let i = 0; i < 6; i++) {
+        console.log(`[Vercel] Checking for deployment (attempt ${i + 1}/6)...`);
+        const deployments = await this.apiRequest(
+          'GET',
+          `/v6/deployments?projectId=${projectId}&limit=1`
+        );
+
+        if (deployments.deployments && deployments.deployments.length > 0) {
+          const deployment = deployments.deployments[0];
+          console.log('[Vercel] Found deployment:', deployment.uid);
+          return deployment;
+        }
+
+        await this.sleep(5000); // Wait 5 seconds between checks
+      }
+
+      throw new Error('No deployment found after 30 seconds');
     } catch (error) {
-      console.error('[Vercel] Failed to get deployment:', error);
+      console.error('[Vercel] Failed to trigger deployment:', error);
       throw new AgentError('Failed to trigger Vercel deployment', 'Vercel', error);
     }
   }
