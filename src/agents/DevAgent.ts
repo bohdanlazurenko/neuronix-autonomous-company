@@ -361,6 +361,12 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     if (blocks.length > 0) {
       console.log('[Dev Agent] Found', blocks.length, 'code blocks');
       
+      // Debug: show first 100 chars of each block
+      blocks.forEach((block, index) => {
+        const content = block[1].trim();
+        console.log(`[Dev Agent] Block ${index}: starts with "${content.substring(0, 50)}", length: ${content.length}`);
+      });
+      
       // Find the block that starts with { (JSON object)
       const jsonBlock = blocks.find(block => block[1].trim().startsWith('{'));
       
