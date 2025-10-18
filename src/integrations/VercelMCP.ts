@@ -225,12 +225,13 @@ export class VercelIntegration {
       console.log('[Vercel] Creating deploy hook for project...');
       const hookData = {
         name: `${projectName}-auto-deploy`,
-        ref: 'main', // Deploy from main branch
+        gitBranch: 'main', // Deploy from main branch
       };
 
+      // Correct API endpoint for creating deploy hooks
       const response = await this.apiRequest(
         'POST',
-        `/v1/integrations/deploy/${projectId}/hook`,
+        `/v1/projects/${projectId}/deploy-hooks`,
         hookData
       );
 
@@ -251,15 +252,20 @@ export class VercelIntegration {
     console.log('[Vercel] Repo:', fullRepoName);
 
     try {
-      // Step 1: Get project details to find deploy hooks
-      const project = await this.apiRequest('GET', `/v9/projects/${projectId}`);
-      
+      // Step 1: Get deploy hooks for project
       let deployHook = '';
       
-      // Check if deploy hook exists
-      if (project.link?.deployHooks && project.link.deployHooks.length > 0) {
-        deployHook = project.link.deployHooks[0].url;
-        console.log('[Vercel] Found existing deploy hook');
+      try {
+        const hooks = await this.apiRequest('GET', `/v1/projects/${projectId}/deploy-hooks`);
+        
+        if (hooks && Array.isArray(hooks) && hooks.length > 0) {
+          deployHook = hooks[0].url;
+          console.log('[Vercel] Found existing deploy hook:', deployHook);
+        } else {
+          console.log('[Vercel] No deploy hooks found for project');
+        }
+      } catch (error) {
+        console.warn('[Vercel] Failed to get deploy hooks:', error);
       }
 
       // Step 2: Trigger deployment via hook
