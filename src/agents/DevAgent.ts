@@ -36,7 +36,12 @@ const SYSTEM_PROMPT = `Ты - senior full-stack разработчик авто�
 
 ЗАДАЧА: Сгенерировать ВСЕ файлы проекта по спецификации.
 
-КРИТИЧЕСКИ ВАЖНО: Твой ответ должен быть ТОЛЬКО валидный JSON, без каких-либо дополнительных пояснений, комментариев или markdown форматирования.
+КРИТИЧЕСКИ ВАЖНО ДЛЯ ФОРМАТА ОТВЕТА:
+1. Твой ответ должен быть ТОЛЬКО валидный JSON
+2. Используй ТОЛЬКО двойные кавычки (") для всех строк
+3. НЕ используй одинарные кавычки (')
+4. Без пояснений, комментариев, markdown
+5. Экранируй специальные символы внутри строк: \\n для новой строки, \\" для кавычек
 
 ФОРМАТ ВЫВОДА (строго JSON):
 {
@@ -47,11 +52,12 @@ const SYSTEM_PROMPT = `Ты - senior full-stack разработчик авто�
   ]
 }
 
-НЕ добавляй в ответ:
-- Никаких пояснений до или после JSON
-- Никаких markdown блоков (```json или ```)
-- Никаких комментариев
-Только чистый JSON объект!
+ЗАПРЕЩЕНО:
+- Пояснения до или после JSON
+- Markdown блоки (три backtick или похожее)
+- Комментарии
+- Одинарные кавычки внутри JSON
+Только чистый валидный JSON!
 
 КРИТИЧЕСКИЕ ТРЕБОВАНИЯ:
 
@@ -300,7 +306,7 @@ export class DevAgent {
           messages: [
             {
               role: 'user',
-              content: `План разработки:\n${planDescription}\n\nСгенерируй ВСЕ файлы проекта. Ответ ТОЛЬКО JSON.`,
+              content: `План разработки:\n${planDescription}\n\nСгенерируй ВСЕ файлы проекта.\n\nКРИТИЧЕСКИ ВАЖНО: Ответ должен быть ТОЛЬКО валидный JSON с двойными кавычками для всех строк. Не используй одинарные кавычки.`,
             },
           ],
         },
@@ -367,27 +373,43 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
     }
 
-    // Parse JSON
+    // Fix common JSON issues from Z.AI
+    let parsed: any;
     try {
-      const parsed = JSON.parse(jsonText);
+      // First try parsing as-is
+      parsed = JSON.parse(jsonText);
+    } catch (firstError) {
+      console.warn('[Dev Agent] Initial parse failed, attempting to fix JSON...');
       
-      // Validate basic structure
-      if (!parsed || typeof parsed !== 'object') {
-        throw new Error('Parsed result is not an object');
+      try {
+        // Try to fix single quotes issue - simple approach
+        // This is a naive fix but may work for simple cases
+        const fixedJson = jsonText
+          .replace(/\\'/g, "ESCAPED_SINGLE_QUOTE") // Temporarily replace escaped single quotes
+          .replace(/'/g, '"') // Replace all single quotes with double quotes
+          .replace(/ESCAPED_SINGLE_QUOTE/g, "'"); // Restore escaped single quotes
+        
+        parsed = JSON.parse(fixedJson);
+        console.log('[Dev Agent] Successfully fixed and parsed JSON');
+      } catch (secondError) {
+        console.error('[Dev Agent] Failed to parse JSON even after fixing');
+        console.error('[Dev Agent] First 1000 chars:', jsonText.substring(0, 1000));
+        console.error('[Dev Agent] Last 500 chars:', jsonText.substring(Math.max(0, jsonText.length - 500)));
+        console.error('[Dev Agent] Parse error:', firstError instanceof Error ? firstError.message : firstError);
+        throw new AgentError('Failed to parse Dev Agent response as JSON', 'Dev', firstError);
       }
-      
-      if (!parsed.files) {
-        throw new Error('Missing "files" property in response');
-      }
-      
-      return parsed;
-    } catch (error) {
-      console.error('[Dev Agent] Failed to parse JSON');
-      console.error('[Dev Agent] First 1000 chars:', jsonText.substring(0, 1000));
-      console.error('[Dev Agent] Last 500 chars:', jsonText.substring(Math.max(0, jsonText.length - 500)));
-      console.error('[Dev Agent] Parse error:', error instanceof Error ? error.message : error);
-      throw new AgentError('Failed to parse Dev Agent response as JSON', 'Dev', error);
     }
+    
+    // Validate basic structure
+    if (!parsed || typeof parsed !== 'object') {
+      throw new ValidationError('Parsed result is not an object', 'response', parsed);
+    }
+    
+    if (!parsed.files) {
+      throw new ValidationError('Missing "files" property in response', 'response.files', parsed);
+    }
+    
+    return parsed;
   }
 
   /**
