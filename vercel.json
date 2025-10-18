@@ -1,0 +1,15 @@
+{
+  "buildCommand": "next build",
+  "devCommand": "next dev",
+  "installCommand": "npm install",
+  "framework": "nextjs",
+  "regions": ["iad1"],
+  "env": {
+    "ANTHROPIC_API_KEY": "@anthropic_api_key",
+    "ANTHROPIC_BASE_URL": "@anthropic_base_url",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "@anthropic_default_sonnet_model",
+    "GITHUB_TOKEN": "@github_token",
+    "GITHUB_USERNAME": "@github_username",
+    "VERCEL_TOKEN": "@vercel_token"
+  }
+}
