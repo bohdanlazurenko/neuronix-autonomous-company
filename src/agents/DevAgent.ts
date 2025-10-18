@@ -348,21 +348,23 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
 
     const text = textContent.text.trim();
     console.log('[Dev Agent] Raw response length:', text.length);
+    console.log('[Dev Agent] Raw response START (first 500 chars):', text.substring(0, 500));
+    console.log('[Dev Agent] Raw response END (last 300 chars):', text.substring(Math.max(0, text.length - 300)));
 
     // Try to extract JSON from response
     let jsonText = text;
 
-    // Remove markdown code blocks if present
-    if (text.includes('```json')) {
-      const match = text.match(/```json\s*([\s\S]*?)\s*```/);
-      if (match) {
-        jsonText = match[1].trim();
-      }
-    } else if (text.includes('```')) {
-      const match = text.match(/```\s*([\s\S]*?)\s*```/);
-      if (match) {
-        jsonText = match[1].trim();
-      }
+    // Remove markdown code blocks if present - find ALL blocks and choose the largest
+    const codeBlockMatches = text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g);
+    const blocks = Array.from(codeBlockMatches);
+    
+    if (blocks.length > 0) {
+      // Find the largest block (most likely to contain the full JSON)
+      const largestBlock = blocks.reduce((max, current) => {
+        return current[1].length > max[1].length ? current : max;
+      });
+      jsonText = largestBlock[1].trim();
+      console.log('[Dev Agent] Extracted from code block, found', blocks.length, 'blocks, using largest');
     }
 
     // Try to find JSON object boundaries
@@ -371,6 +373,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     
     if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
       jsonText = jsonText.substring(jsonStart, jsonEnd + 1);
+      console.log('[Dev Agent] Extracted JSON from boundaries, length:', jsonText.length);
     }
 
     // Fix common JSON issues from Z.AI
