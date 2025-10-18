@@ -1,9 +1,8 @@
 /**
  * Vercel Integration
- * Deploys projects to Vercel automatically
+ * Deploys projects to Vercel automatically using REST API
  */
 
-import { Vercel } from '@vercel/sdk';
 import {
   VercelResult,
   AgentError,
@@ -17,16 +16,57 @@ export interface VercelConfig {
 }
 
 export class VercelIntegration {
-  private client: Vercel;
+  private token: string;
   private config: VercelConfig;
+  private baseUrl = 'https://api.vercel.com';
 
   constructor(config: VercelConfig) {
     if (!config.token) {
       throw new ValidationError('Vercel token is required', 'token');
     }
 
+    this.token = config.token;
     this.config = config;
-    this.client = new Vercel({ bearerToken: config.token });
+  }
+
+  /**
+   * Make API request to Vercel
+   */
+  private async apiRequest(
+    method: string,
+    endpoint: string,
+    body?: any
+  ): Promise<any> {
+    const url = `${this.baseUrl}${endpoint}`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${this.token}`,
+      'Content-Type': 'application/json',
+    };
+
+    if (this.config.orgId) {
+      headers['X-Team-Id'] = this.config.orgId;
+    }
+
+    console.log(`[Vercel API] ${method} ${url}`);
+    if (body) {
+      console.log('[Vercel API] Body:', JSON.stringify(body, null, 2));
+    }
+
+    const response = await fetch(url, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    const responseText = await response.text();
+    console.log('[Vercel API] Response status:', response.status);
+    console.log('[Vercel API] Response:', responseText.substring(0, 500));
+
+    if (!response.ok) {
+      throw new Error(`Vercel API error (${response.status}): ${responseText}`);
+    }
+
+    return responseText ? JSON.parse(responseText) : {};
   }
 
   /**
@@ -123,18 +163,12 @@ export class VercelIntegration {
    */
   private async getExistingProject(projectName: string): Promise<any> {
     try {
-      // List all projects and find by name
-      const projects = await this.client.projects.getProjects({
-        teamId: this.config.orgId,
-      });
-
-      const project = projects.projects.find((p: any) => p.name === projectName);
-      if (!project) {
-        throw new Error('Project not found');
-      }
-
-      return project;
+      console.log('[Vercel] Looking for existing project:', projectName);
+      const response = await this.apiRequest('GET', `/v9/projects/${projectName}`);
+      console.log('[Vercel] Found existing project:', response.id);
+      return response;
     } catch (error) {
+      console.log('[Vercel] Project not found, will create new');
       throw new Error('Project not found');
     }
   }
@@ -152,26 +186,29 @@ export class VercelIntegration {
     console.log('[Vercel] GitHub repo:', fullRepoName);
 
     try {
-      const response = await this.client.projects.createProject({
+      const projectData: any = {
         name,
-        framework: framework as any,
         gitRepository: {
           type: 'github',
           repo: fullRepoName,
-        } as any,
-        buildCommand: framework.toLowerCase().includes('next') ? 'npm run build' : undefined,
-        devCommand: framework.toLowerCase().includes('next') ? 'npm run dev' : undefined,
-        installCommand: 'npm install',
-        outputDirectory: framework.toLowerCase().includes('next') ? '.next' : undefined,
-        publicSource: false,
-        teamId: this.config.orgId,
-      } as any);
+        },
+      };
 
-      console.log('[Vercel] Project created:', response);
+      // Add framework-specific settings
+      if (framework.toLowerCase().includes('next')) {
+        projectData.framework = 'nextjs';
+        projectData.buildCommand = 'npm run build';
+        projectData.devCommand = 'npm run dev';
+        projectData.installCommand = 'npm install';
+        projectData.outputDirectory = '.next';
+      }
+
+      const response = await this.apiRequest('POST', '/v10/projects', projectData);
+      
+      console.log('[Vercel] Project created:', response.id);
       return response;
     } catch (error) {
       console.error('[Vercel] Failed to create project:', error);
-      console.error('[Vercel] Error details:', JSON.stringify(error, null, 2));
       throw new AgentError('Failed to create Vercel project', 'Vercel', error);
     }
   }
@@ -185,42 +222,30 @@ export class VercelIntegration {
     console.log('[Vercel] Repo:', fullRepoName);
 
     try {
-      // Use a simple approach - just trigger a deployment via hook or API
-      // First, try to use the project's git integration
-      const deployment = await this.client.deployments.createDeployment({
-        name: projectId,
-        gitSource: {
-          type: 'github',
-          ref: 'main',
-          repo: fullRepoName,
-        } as any,
-        target: 'production',
-        teamId: this.config.orgId,
-      } as any);
-
-      console.log('[Vercel] Deployment triggered:', deployment);
-      return deployment;
-    } catch (error) {
-      console.error('[Vercel] Failed to trigger deployment:', error);
-      console.error('[Vercel] Error details:', JSON.stringify(error, null, 2));
+      // Create deployment using Vercel API
+      // For GitHub-linked projects, Vercel automatically deploys on push
+      // We can trigger a redeploy or just wait for auto-deploy
       
-      // Fallback: try to get latest deployment
-      try {
-        console.log('[Vercel] Trying fallback - check for existing deployments...');
-        const deployments = await this.client.deployments.getDeployments({
-          projectId,
-          teamId: this.config.orgId,
-          limit: 1,
-        });
+      // Option 1: Wait for auto-deployment (best practice)
+      console.log('[Vercel] Waiting for automatic GitHub deployment...');
+      await this.sleep(5000); // Give Vercel time to detect the push
+      
+      // Get latest deployment for this project
+      const deployments = await this.apiRequest(
+        'GET',
+        `/v6/deployments?projectId=${projectId}&limit=1`
+      );
 
-        if (deployments.deployments && deployments.deployments.length > 0) {
-          console.log('[Vercel] Found existing deployment:', deployments.deployments[0]);
-          return deployments.deployments[0];
-        }
-      } catch (fallbackError) {
-        console.error('[Vercel] Fallback also failed:', fallbackError);
+      if (deployments.deployments && deployments.deployments.length > 0) {
+        const deployment = deployments.deployments[0];
+        console.log('[Vercel] Found deployment:', deployment.uid);
+        return deployment;
       }
 
+      // Option 2: If no deployment found, trigger hook
+      throw new Error('No deployment found after GitHub push');
+    } catch (error) {
+      console.error('[Vercel] Failed to get deployment:', error);
       throw new AgentError('Failed to trigger Vercel deployment', 'Vercel', error);
     }
   }
@@ -240,11 +265,12 @@ export class VercelIntegration {
 
     while (Date.now() - startTime < maxWaitTime) {
       try {
-        const deployment = await this.client.deployments.getDeployment(deploymentId as any, {
-          teamId: this.config.orgId,
-        } as any);
+        const deployment = await this.apiRequest(
+          'GET',
+          `/v13/deployments/${deploymentId}`
+        );
 
-        const state = (deployment as any).readyState || (deployment as any).state;
+        const state = deployment.readyState || deployment.state;
         console.log('[Vercel] Deployment state:', state);
 
         if (state === 'READY' || state === 'ready') {
@@ -273,7 +299,7 @@ export class VercelIntegration {
         console.error('[Vercel] Error checking deployment status:', error);
         
         // If deployment not found yet, keep waiting
-        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        const elapsed = Date.now() - startTime;
         if (elapsed < 30000) { // First 30 seconds, be patient
           console.log('[Vercel] Deployment may still be initializing...');
           await this.sleep(pollInterval);
@@ -299,12 +325,13 @@ export class VercelIntegration {
    */
   async getDeploymentLogs(deploymentId: string): Promise<string[]> {
     try {
-      const logs: any = await this.client.deployments.getDeploymentEvents(deploymentId as any, {
-        teamId: this.config.orgId,
-      } as any);
+      const response = await this.apiRequest(
+        'GET',
+        `/v2/deployments/${deploymentId}/events`
+      );
 
-      if (Array.isArray(logs)) {
-        return logs.map((log: any) => log.text || log.message || '').filter(Boolean);
+      if (Array.isArray(response)) {
+        return response.map((log: any) => log.text || log.message || '').filter(Boolean);
       }
       return [];
     } catch (error) {
