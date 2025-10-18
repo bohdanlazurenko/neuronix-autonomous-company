@@ -185,7 +185,7 @@ const SYSTEM_PROMPT = `Ты - senior full-stack разработчик авто�
    npm run dev
    \`\`\`
 
-   Open [http://localhost:3000](http://localhost:3000)
+   Open [http://localhost:3003](http://localhost:3003)
 
    ## Features
 

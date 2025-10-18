@@ -122,7 +122,7 @@ VERCEL_PROJECT_ID=prj_xxxxx          # После первого деплоя
 npm run dev
 ```
 
-Откройте [http://localhost:3000](http://localhost:3000)
+Откройте [http://localhost:3003](http://localhost:3003)
 
 ## 📖 Использование
 
@@ -144,7 +144,7 @@ npm run dev
 ### Через API
 
 ```bash
-curl -X POST http://localhost:3000/api/create \
+curl -X POST http://localhost:3003/api/create \
   -H "Content-Type: application/json" \
   -d '{"brief": "Создай habit tracker с дневным трекингом"}'
 ```

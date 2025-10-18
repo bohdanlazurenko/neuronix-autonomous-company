@@ -47,7 +47,8 @@ jobs:
         if: steps.check_health.outputs.has_health_check == 'true'
         run: |
           npm run dev &
-          sleep 15
+          sleep 10
+          curl --fail http://localhost:3003/api/ping || exit 1
         
       - name: Test health endpoint
         if: steps.check_health.outputs.has_health_check == 'true'

@@ -47,7 +47,7 @@ VERCEL_PROJECT_ID=prj_xxxxx
 npm run dev
 ```
 
-Откройте [http://localhost:3000](http://localhost:3000)
+Откройте [http://localhost:3003](http://localhost:3003)
 
 ## Шаг 4: Тестирование
 
