@@ -237,10 +237,14 @@ export class DevAgent {
   /**
    * Generate complete code for the project
    */
-  async generateCode(plan: DevelopmentPlan): Promise<DevAgentResult> {
+  async generateCode(plan: DevelopmentPlan, retryCount: number = 0): Promise<DevAgentResult> {
+    const maxRetries = 2;
     console.log('[Dev Agent] Starting code generation...');
     console.log('[Dev Agent] Project:', plan.project_name);
     console.log('[Dev Agent] Files to generate:', plan.files.length);
+    if (retryCount > 0) {
+      console.log('[Dev Agent] Retry attempt:', retryCount, 'of', maxRetries);
+    }
 
     // Validate input
     this.validatePlan(plan);
@@ -271,6 +275,13 @@ export class DevAgent {
 
       return devResult;
     } catch (error) {
+      // If validation failed and we have retries left, try again
+      if (error instanceof ValidationError && retryCount < maxRetries) {
+        console.warn('[Dev Agent] Validation failed, retrying...', error.message);
+        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+        return this.generateCode(plan, retryCount + 1);
+      }
+
       if (error instanceof AgentError || error instanceof ValidationError) {
         throw error;
       }
@@ -367,6 +378,11 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     const text = textContent.text.trim();
     console.log('[Dev Agent] Raw response length:', text.length);
     console.log('[Dev Agent] Raw response preview:', text.substring(0, 200));
+
+    // Check if response is suspiciously short (likely truncated)
+    if (text.length < 3000) {
+      console.warn('[Dev Agent] ⚠️  Response is very short (' + text.length + ' chars), may be truncated');
+    }
 
     // Strategy 1: Try to parse entire response as JSON (ideal case)
     try {
