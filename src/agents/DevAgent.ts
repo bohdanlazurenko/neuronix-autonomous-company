@@ -771,6 +771,25 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
           console.log(`[Dev Agent] Found class-variance-authority usage in ${file.path}`);
           usedLibraries.add('class-variance-authority');
         }
+        
+        // Check for @radix-ui packages (scan for all variants)
+        const radixMatch = file.content.match(/from\s+['"](@radix-ui\/[^'"]+)['"]|require\(['"](@radix-ui\/[^'"]+)['"]\)/g);
+        if (radixMatch) {
+          radixMatch.forEach(match => {
+            const pkgMatch = match.match(/@radix-ui\/[^'"]+/);
+            if (pkgMatch) {
+              const pkg = pkgMatch[0];
+              console.log(`[Dev Agent] Found ${pkg} usage in ${file.path}`);
+              usedLibraries.add(pkg);
+            }
+          });
+        }
+        
+        // Check for lucide-react
+        if (file.content.match(/from\s+['"]lucide-react['"]|require\(['"]lucide-react['"]\)/)) {
+          console.log(`[Dev Agent] Found lucide-react usage in ${file.path}`);
+          usedLibraries.add('lucide-react');
+        }
       }
     }
     
@@ -791,6 +810,20 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
             'tailwind-merge': '^2.5.4',
             'clsx': '^2.1.1',
             'class-variance-authority': '^0.7.0',
+            '@radix-ui/react-slot': '^1.1.0',
+            '@radix-ui/react-dialog': '^1.1.2',
+            '@radix-ui/react-dropdown-menu': '^2.1.2',
+            '@radix-ui/react-select': '^2.1.2',
+            '@radix-ui/react-tabs': '^1.1.1',
+            '@radix-ui/react-switch': '^1.1.1',
+            '@radix-ui/react-checkbox': '^1.1.2',
+            '@radix-ui/react-radio-group': '^1.2.1',
+            '@radix-ui/react-slider': '^1.2.1',
+            '@radix-ui/react-tooltip': '^1.1.4',
+            '@radix-ui/react-popover': '^1.1.2',
+            '@radix-ui/react-avatar': '^1.1.1',
+            '@radix-ui/react-label': '^2.1.0',
+            'lucide-react': '^0.461.0',
           };
           
           for (const lib of usedLibraries) {
