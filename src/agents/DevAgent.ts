@@ -275,10 +275,16 @@ export class DevAgent {
 
       return devResult;
     } catch (error) {
-      // If validation failed and we have retries left, try again
-      if (error instanceof ValidationError && retryCount < maxRetries) {
-        console.warn('[Dev Agent] Validation failed, retrying...', error.message);
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2 seconds
+      // Check if this is a JSON truncation error (Z.AI stopped mid-response)
+      const isTruncationError = error instanceof AgentError && 
+        error.originalError instanceof Error &&
+        error.originalError.message.includes('Expected');
+      
+      // If validation failed or JSON truncated and we have retries left, try again
+      if ((error instanceof ValidationError || isTruncationError) && retryCount < maxRetries) {
+        console.warn('[Dev Agent] ⚠️  Response truncated or validation failed, retrying...', 
+          error instanceof Error ? error.message : String(error));
+        await new Promise(resolve => setTimeout(resolve, 3000)); // Wait 3 seconds
         return this.generateCode(plan, retryCount + 1);
       }
 
@@ -375,7 +381,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       throw new AgentError('No text content in response', 'Dev');
     }
 
-    const text = textContent.text.trim();
+    let text = textContent.text.trim();
     console.log('[Dev Agent] Raw response length:', text.length);
     console.log('[Dev Agent] Raw response preview:', text.substring(0, 200));
 
@@ -386,7 +392,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
 
     // Strategy 1: Try to parse entire response as JSON (ideal case)
     try {
-      const parsed = JSON.parse(text);
+      const parsed = JSON.parse(this.normalizeJSON(text));
       if (parsed && parsed.files) {
         console.log('[Dev Agent] ✅ Successfully parsed raw response as JSON');
         return parsed;
@@ -451,6 +457,35 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
           }
         } catch (e) {
           console.warn('[Dev Agent] Failed to parse extracted JSON:', e instanceof Error ? e.message : e);
+          
+          // Try to fix truncated JSON by completing it
+          const fixed = this.tryFixTruncatedJSON(jsonText);
+          if (fixed) {
+            try {
+              const parsedFixed = JSON.parse(fixed);
+              if (parsedFixed && parsedFixed.files) {
+                console.log('[Dev Agent] ✅ Successfully parsed FIXED truncated JSON');
+                return parsedFixed;
+              }
+            } catch (fixError) {
+              console.warn('[Dev Agent] Failed to parse fixed JSON:', fixError instanceof Error ? fixError.message : fixError);
+            }
+          }
+        }
+      } else {
+        // JSON was truncated mid-way, try to complete it
+        console.warn('[Dev Agent] ⚠️  JSON appears truncated (no closing brace found)');
+        const fixed = this.tryFixTruncatedJSON(jsonText);
+        if (fixed) {
+          try {
+            const parsedFixed = JSON.parse(fixed);
+            if (parsedFixed && parsedFixed.files) {
+              console.log('[Dev Agent] ✅ Successfully parsed FIXED incomplete JSON');
+              return parsedFixed;
+            }
+          } catch (fixError) {
+            console.warn('[Dev Agent] Failed to parse fixed incomplete JSON');
+          }
         }
       }
     }
@@ -674,6 +709,74 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     return files.reduce((total, file) => {
       return total + file.content.split('\n').length;
     }, 0);
+  }
+
+  /**
+   * Try to fix truncated JSON by completing missing parts
+   */
+  private tryFixTruncatedJSON(jsonText: string): string | null {
+    console.log('[Dev Agent] 🔧 Attempting to fix truncated JSON...');
+    
+    try {
+      // Remove trailing incomplete content (last incomplete string/object)
+      let fixed = jsonText.trim();
+      
+      // If ends with incomplete string, remove it
+      if (fixed.endsWith('"') && !fixed.endsWith('"}')) {
+        fixed = fixed.substring(0, fixed.lastIndexOf('{"path"'));
+      }
+      
+      // If ends with comma or incomplete object, remove back to last complete file
+      const lastCompleteFile = fixed.lastIndexOf('},');
+      if (lastCompleteFile > 0) {
+        fixed = fixed.substring(0, lastCompleteFile + 1);
+      }
+      
+      // Close the array and object
+      if (!fixed.endsWith(']')) {
+        fixed += ']';
+      }
+      if (!fixed.endsWith('}')) {
+        fixed += '}';
+      }
+      
+      console.log('[Dev Agent] Fixed JSON length:', fixed.length);
+      return fixed;
+    } catch (error) {
+      console.error('[Dev Agent] Failed to fix JSON:', error);
+      return null;
+    }
+  }
+
+  /**
+   * Normalize JSON by fixing common Z.AI formatting issues
+   */
+  private normalizeJSON(jsonText: string): string {
+    // Don't log for every call to avoid spam
+    let normalized = jsonText;
+    
+    // Fix: Single quotes to double quotes in key-value pairs
+    // Pattern: find all occurrences of ': ' followed by single quote
+    normalized = normalized.replace(/:\s*'([^']*)'/g, ': "$1"');
+    
+    // Critical fix: Z.AI sometimes returns literal newlines inside JSON strings
+    // which breaks JSON.parse(). We need to escape them.
+    // Find all "content": "..." patterns and escape newlines inside
+    normalized = normalized.replace(
+      /"content":\s*"([\s\S]*?)"/g,
+      (_match, content) => {
+        // Escape unescaped newlines, tabs, etc.
+        const escaped = content
+          .replace(/\\/g, '\\\\')  // Escape backslashes first
+          .replace(/\n/g, '\\n')   // Escape newlines
+          .replace(/\r/g, '\\r')   // Escape carriage returns
+          .replace(/\t/g, '\\t')   // Escape tabs
+          .replace(/"/g, '\\"');   // Escape quotes
+        return `"content": "${escaped}"`;
+      }
+    );
+    
+    return normalized;
   }
 }
 
