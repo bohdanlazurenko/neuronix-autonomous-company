@@ -96,7 +96,7 @@ Text explanations mixed with JSON
      }
    - README.md - документация с инструкциями по запуску
    - .gitignore - стандартный Next.js gitignore
-   - next.config.js - конфигурация Next.js
+   - next.config.js - конфигурация Next.js (ОБЯЗАТЕЛЬНО с module.exports = nextConfig)
    - tailwind.config.ts - если используется Tailwind
    - postcss.config.js - если используется Tailwind
 
@@ -178,20 +178,31 @@ Text explanations mixed with JSON
      )
    }
 
-7. СТИЛИ:
+7. NEXT.CONFIG.JS ШАБЛОН:
+   /** @type {import('next').NextConfig} */
+   const nextConfig = {
+     // твои настройки здесь
+   }
+   
+   module.exports = nextConfig
+   
+   ВАЖНО: ВСЕГДА добавляй module.exports = nextConfig в конце!
+
+8. СТИЛИ:
    - Если Tailwind CSS: создай app/globals.css с директивами
    - Если обычный CSS: создай минимальные стили
    - Всегда импортируй стили в layout.tsx
 
-8. ЗАПРЕЩЕНО:
+9. ЗАПРЕЩЕНО:
    - localStorage/sessionStorage (используй серверные компоненты или API)
    - Неработающие импорты
    - Placeholder код
    - Устаревшие пути (pages/, _app.tsx)
    - Синтаксические ошибки
    - Несуществующие зависимости
+   - next.config.js БЕЗ module.exports (это ошибка!)
 
-9. README.MD СОДЕРЖАНИЕ:
+10. README.MD СОДЕРЖАНИЕ:
    # [Project Name]
 
    [Description]
