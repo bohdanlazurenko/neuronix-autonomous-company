@@ -741,13 +741,18 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       // Fix next.config.js without module.exports
       if (file.path === 'next.config.js') {
         console.log('[Dev Agent] Found next.config.js, checking for module.exports...');
+        console.log('[Dev Agent] Content preview:', file.content.substring(0, 200));
         
-        if (!file.content.includes('module.exports')) {
+        // More robust check: must be at the end, not just anywhere in comments
+        const hasExport = /^\s*module\.exports\s*=\s*nextConfig/m.test(file.content);
+        
+        if (!hasExport) {
           console.log('[Dev Agent] 🔧 Auto-fixing next.config.js: adding module.exports');
           file.content = file.content.trim() + '\n\nmodule.exports = nextConfig\n';
           console.log('[Dev Agent] ✅ Auto-fix applied to next.config.js');
+          console.log('[Dev Agent] New content preview:', file.content.substring(file.content.length - 100));
         } else {
-          console.log('[Dev Agent] next.config.js already has module.exports');
+          console.log('[Dev Agent] next.config.js already has proper module.exports');
         }
       }
       
