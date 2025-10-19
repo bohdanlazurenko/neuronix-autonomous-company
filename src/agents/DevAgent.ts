@@ -270,6 +270,9 @@ export class DevAgent {
       // Validate result
       this.validateResult(result, plan);
 
+      // Auto-fix common issues (next.config.js without module.exports)
+      this.autoFixCommonIssues(result.files);
+
       // Add metadata
       const devResult: DevAgentResult = {
         files: result.files,
@@ -280,7 +283,7 @@ export class DevAgent {
         },
       };
 
-      console.log('[Dev Agent] Code generated successfully');
+      console.log('[Dev Agent] ✅ Code generated successfully');
       console.log('[Dev Agent] Total files:', devResult.metadata?.totalFiles);
       console.log('[Dev Agent] Lines of code:', devResult.metadata?.linesOfCode);
 
@@ -723,6 +726,21 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     return files.reduce((total, file) => {
       return total + file.content.split('\n').length;
     }, 0);
+  }
+
+  /**
+   * Auto-fix common issues that AI often generates incorrectly
+   */
+  private autoFixCommonIssues(files: GeneratedFile[]): void {
+    for (const file of files) {
+      // Fix next.config.js without module.exports
+      if (file.path === 'next.config.js' && !file.content.includes('module.exports')) {
+        console.log('[Dev Agent] 🔧 Auto-fixing next.config.js: adding module.exports');
+        
+        // Add module.exports at the end
+        file.content = file.content.trim() + '\n\nmodule.exports = nextConfig\n';
+      }
+    }
   }
 
   /**

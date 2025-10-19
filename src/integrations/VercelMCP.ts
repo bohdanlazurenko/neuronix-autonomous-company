@@ -103,10 +103,17 @@ export class VercelIntegration {
 
       // Trigger deployment from main branch
       const deployment = await this.triggerDeploymentFromGitHub(project.id, fullRepoName);
-      console.log('[Vercel] Deployment triggered:', deployment.uid);
+      const deploymentId = deployment.uid || deployment.id;
+      
+      if (!deploymentId) {
+        console.error('[Vercel] No deployment ID returned:', deployment);
+        throw new AgentError('Deployment created but no ID returned', 'Vercel');
+      }
+      
+      console.log('[Vercel] Deployment triggered:', deploymentId);
 
       // Wait for deployment to complete
-      const finalDeployment = await this.waitForDeployment(deployment.uid);
+      const finalDeployment = await this.waitForDeployment(deploymentId);
       console.log('[Vercel] Deployment completed:', finalDeployment.readyState);
 
       const deployTime = Math.round((Date.now() - startTime) / 1000);
@@ -356,6 +363,8 @@ export class VercelIntegration {
 
     const startTime = Date.now();
     const pollInterval = 10000; // 10 seconds
+    let notFoundAttempts = 0;
+    const maxNotFoundAttempts = 12; // Up to 2 minutes for deployment to appear in API
 
     while (Date.now() - startTime < maxWaitTime) {
       try {
@@ -364,11 +373,14 @@ export class VercelIntegration {
           `/v13/deployments/${deploymentId}`
         );
 
+        // Reset not found counter once we successfully get the deployment
+        notFoundAttempts = 0;
+
         const state = deployment.readyState || deployment.state;
         console.log('[Vercel] Deployment state:', state);
 
         if (state === 'READY' || state === 'ready') {
-          console.log('[Vercel] Deployment is ready!');
+          console.log('[Vercel] ✅ Deployment is ready!');
           return deployment;
         }
 
@@ -390,17 +402,20 @@ export class VercelIntegration {
         if (error instanceof AgentError) {
           throw error;
         }
-        console.error('[Vercel] Error checking deployment status:', error);
         
-        // If deployment not found yet, keep waiting
-        const elapsed = Date.now() - startTime;
-        if (elapsed < 30000) { // First 30 seconds, be patient
-          console.log('[Vercel] Deployment may still be initializing...');
-          await this.sleep(pollInterval);
-          continue;
+        // Deployment not found yet (404)
+        notFoundAttempts++;
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+        
+        console.log(`[Vercel] Deployment not found yet (attempt ${notFoundAttempts}/${maxNotFoundAttempts}, ${elapsed}s elapsed)`);
+        
+        if (notFoundAttempts >= maxNotFoundAttempts) {
+          console.error('[Vercel] Deployment still not found after max attempts');
+          throw new AgentError('Deployment not found in Vercel API after 2 minutes', 'Vercel', error);
         }
         
-        throw error;
+        // Keep waiting
+        await this.sleep(pollInterval);
       }
     }
 
