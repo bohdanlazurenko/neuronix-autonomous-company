@@ -734,6 +734,9 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
   private autoFixCommonIssues(files: GeneratedFile[]): void {
     console.log('[Dev Agent] Running auto-fix on', files.length, 'files...');
     
+    // Track which libraries are used in code
+    const usedLibraries = new Set<string>();
+    
     for (const file of files) {
       // Fix next.config.js without module.exports
       if (file.path === 'next.config.js') {
@@ -741,13 +744,57 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
         
         if (!file.content.includes('module.exports')) {
           console.log('[Dev Agent] 🔧 Auto-fixing next.config.js: adding module.exports');
-          
-          // Add module.exports at the end
           file.content = file.content.trim() + '\n\nmodule.exports = nextConfig\n';
-          
           console.log('[Dev Agent] ✅ Auto-fix applied to next.config.js');
         } else {
           console.log('[Dev Agent] next.config.js already has module.exports');
+        }
+      }
+      
+      // Scan for common library imports that might be missing from package.json
+      if (file.path.endsWith('.tsx') || file.path.endsWith('.ts')) {
+        // Check for tailwind-merge/clsx usage
+        if (file.content.includes('tailwind-merge') || file.content.includes('from "tailwind-merge"')) {
+          usedLibraries.add('tailwind-merge');
+        }
+        if (file.content.includes('from "clsx"') || file.content.includes('clsx')) {
+          usedLibraries.add('clsx');
+        }
+        if (file.content.includes('class-variance-authority')) {
+          usedLibraries.add('class-variance-authority');
+        }
+      }
+    }
+    
+    // Auto-add missing dependencies to package.json
+    if (usedLibraries.size > 0) {
+      const packageJsonFile = files.find(f => f.path === 'package.json');
+      if (packageJsonFile) {
+        try {
+          const packageJson = JSON.parse(packageJsonFile.content);
+          let modified = false;
+          
+          // Add missing libraries
+          const libraryVersions: Record<string, string> = {
+            'tailwind-merge': '^2.5.4',
+            'clsx': '^2.1.1',
+            'class-variance-authority': '^0.7.0',
+          };
+          
+          for (const lib of usedLibraries) {
+            if (!packageJson.dependencies[lib]) {
+              console.log(`[Dev Agent] 🔧 Auto-adding missing dependency: ${lib}`);
+              packageJson.dependencies[lib] = libraryVersions[lib] || 'latest';
+              modified = true;
+            }
+          }
+          
+          if (modified) {
+            packageJsonFile.content = JSON.stringify(packageJson, null, 2);
+            console.log('[Dev Agent] ✅ Auto-fix applied to package.json');
+          }
+        } catch (error) {
+          console.warn('[Dev Agent] Failed to parse package.json for auto-fix:', error);
         }
       }
     }
