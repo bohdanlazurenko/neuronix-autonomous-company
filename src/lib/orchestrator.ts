@@ -106,7 +106,7 @@ export class ProjectOrchestrator {
         onStatus
       );
 
-      // Step 4: Deploy to Vercel (optional)
+      // Step 4: Deploy to Vercel (REQUIRED)
       let vercelResult;
       if (this.config.enableVercelDeploy && this.config.vercelToken) {
         this.emitStatus(
@@ -116,42 +116,38 @@ export class ProjectOrchestrator {
           onStatus
         );
 
-        try {
-          const vercelIntegration = createVercelIntegration({
-            token: this.config.vercelToken,
-          });
-          
-          console.log('[Orchestrator] Starting Vercel deployment...');
-          console.log('[Orchestrator] Repo URL:', githubResult.repoUrl);
-          console.log('[Orchestrator] Project name:', plan.project_name);
-          
-          vercelResult = await vercelIntegration.deployProject(
-            githubResult.repoUrl,
-            plan.project_name,
-            plan.stack.framework.toLowerCase().includes('next') ? 'nextjs' : 'other'
-          );
+        const vercelIntegration = createVercelIntegration({
+          token: this.config.vercelToken,
+        });
+        
+        console.log('[Orchestrator] Starting Vercel deployment...');
+        console.log('[Orchestrator] Repo URL:', githubResult.repoUrl);
+        console.log('[Orchestrator] Project name:', plan.project_name);
+        
+        // Deployment is REQUIRED - throw error if it fails
+        vercelResult = await vercelIntegration.deployProject(
+          githubResult.repoUrl,
+          plan.project_name,
+          plan.stack.framework.toLowerCase().includes('next') ? 'nextjs' : 'other'
+        );
 
-          console.log('[Orchestrator] Vercel deployment successful:', vercelResult);
-          
-          this.emitStatus(
-            'deploying',
-            `✅ Деплой завершен: ${vercelResult.deployUrl}`,
-            90,
-            onStatus
-          );
-        } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          console.error('[Orchestrator] Vercel deployment failed:', error);
-          console.error('[Orchestrator] Error message:', errorMsg);
-          console.error('[Orchestrator] Error stack:', error instanceof Error ? error.stack : 'No stack');
-          
-          this.emitStatus(
-            'deploying',
-            `⚠️ Деплой на Vercel не удался: ${errorMsg}`,
-            90,
-            onStatus
+        console.log('[Orchestrator] Vercel deployment successful:', vercelResult);
+        
+        // Verify deployment status
+        if (vercelResult.status !== 'ready') {
+          throw new ValidationError(
+            `Deployment completed with unexpected status: ${vercelResult.status}`,
+            'vercel.deployment.status',
+            vercelResult.status
           );
         }
+        
+        this.emitStatus(
+          'deploying',
+          `✅ Деплой завершен: ${vercelResult.deployUrl}`,
+          90,
+          onStatus
+        );
       }
 
       // Step 5: CI/CD setup skipped for now (can be added later)
