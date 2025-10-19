@@ -790,6 +790,14 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
           console.log(`[Dev Agent] Found lucide-react usage in ${file.path}`);
           usedLibraries.add('lucide-react');
         }
+        
+        // Check for tailwindcss-animate plugin in tailwind.config
+        if (file.path.includes('tailwind.config')) {
+          if (file.content.match(/require\(['"]tailwindcss-animate['"]\)/)) {
+            console.log(`[Dev Agent] Found tailwindcss-animate in ${file.path}`);
+            usedLibraries.add('tailwindcss-animate');
+          }
+        }
       }
     }
     
@@ -826,8 +834,25 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
             'lucide-react': '^0.461.0',
           };
           
+          // Dev dependencies (Tailwind plugins, etc.)
+          const devLibraryVersions: Record<string, string> = {
+            'tailwindcss-animate': '^1.0.7',
+          };
+          
           for (const lib of usedLibraries) {
-            if (!packageJson.dependencies || !packageJson.dependencies[lib]) {
+            // Check if it's a dev dependency
+            if (devLibraryVersions[lib]) {
+              if (!packageJson.devDependencies || !packageJson.devDependencies[lib]) {
+                console.log(`[Dev Agent] 🔧 Auto-adding missing devDependency: ${lib} @ ${devLibraryVersions[lib]}`);
+                if (!packageJson.devDependencies) {
+                  packageJson.devDependencies = {};
+                }
+                packageJson.devDependencies[lib] = devLibraryVersions[lib];
+                modified = true;
+              } else {
+                console.log(`[Dev Agent] DevDependency ${lib} already exists`);
+              }
+            } else if (!packageJson.dependencies || !packageJson.dependencies[lib]) {
               console.log(`[Dev Agent] 🔧 Auto-adding missing dependency: ${lib} @ ${libraryVersions[lib]}`);
               if (!packageJson.dependencies) {
                 packageJson.dependencies = {};
