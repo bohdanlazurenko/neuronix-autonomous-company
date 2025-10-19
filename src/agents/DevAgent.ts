@@ -381,7 +381,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       throw new AgentError('No text content in response', 'Dev');
     }
 
-    let text = textContent.text.trim();
+    const text = textContent.text.trim();
     console.log('[Dev Agent] Raw response length:', text.length);
     console.log('[Dev Agent] Raw response preview:', text.substring(0, 200));
 
@@ -397,7 +397,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
         console.log('[Dev Agent] ✅ Successfully parsed raw response as JSON');
         return parsed;
       }
-    } catch (e) {
+    } catch (_e) {
       console.log('[Dev Agent] Raw response is not pure JSON, will extract...');
     }
 
@@ -470,8 +470,8 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
                 console.log('[Dev Agent] ✅ Successfully parsed FIXED truncated JSON');
                 return parsedFixed;
               }
-            } catch (fixError) {
-              console.warn('[Dev Agent] Failed to parse fixed JSON:', fixError instanceof Error ? fixError.message : fixError);
+            } catch (_fixError) {
+              console.warn('[Dev Agent] Failed to parse fixed JSON');
             }
           }
         }
@@ -486,7 +486,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
               console.log('[Dev Agent] ✅ Successfully parsed FIXED incomplete JSON');
               return parsedFixed;
             }
-          } catch (fixError) {
+          } catch (_fixError) {
             console.warn('[Dev Agent] Failed to parse fixed incomplete JSON');
           }
         }
@@ -511,7 +511,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
               console.log(`[Dev Agent] ✅ Successfully parsed code block ${i} as JSON`);
               return parsed;
             }
-          } catch (e) {
+          } catch (_e) {
             console.log(`[Dev Agent] Block ${i} is not valid JSON`);
           }
         }
