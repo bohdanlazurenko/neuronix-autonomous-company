@@ -732,15 +732,27 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
    * Auto-fix common issues that AI often generates incorrectly
    */
   private autoFixCommonIssues(files: GeneratedFile[]): void {
+    console.log('[Dev Agent] Running auto-fix on', files.length, 'files...');
+    
     for (const file of files) {
       // Fix next.config.js without module.exports
-      if (file.path === 'next.config.js' && !file.content.includes('module.exports')) {
-        console.log('[Dev Agent] 🔧 Auto-fixing next.config.js: adding module.exports');
+      if (file.path === 'next.config.js') {
+        console.log('[Dev Agent] Found next.config.js, checking for module.exports...');
         
-        // Add module.exports at the end
-        file.content = file.content.trim() + '\n\nmodule.exports = nextConfig\n';
+        if (!file.content.includes('module.exports')) {
+          console.log('[Dev Agent] 🔧 Auto-fixing next.config.js: adding module.exports');
+          
+          // Add module.exports at the end
+          file.content = file.content.trim() + '\n\nmodule.exports = nextConfig\n';
+          
+          console.log('[Dev Agent] ✅ Auto-fix applied to next.config.js');
+        } else {
+          console.log('[Dev Agent] next.config.js already has module.exports');
+        }
       }
     }
+    
+    console.log('[Dev Agent] Auto-fix completed');
   }
 
   /**
