@@ -842,6 +842,13 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
           for (const lib of usedLibraries) {
             // Check if it's a dev dependency
             if (devLibraryVersions[lib]) {
+              // Remove from dependencies if wrongly placed there
+              if (packageJson.dependencies && packageJson.dependencies[lib]) {
+                console.log(`[Dev Agent] 🔧 Moving ${lib} from dependencies to devDependencies`);
+                delete packageJson.dependencies[lib];
+                modified = true;
+              }
+              
               if (!packageJson.devDependencies || !packageJson.devDependencies[lib]) {
                 console.log(`[Dev Agent] 🔧 Auto-adding missing devDependency: ${lib} @ ${devLibraryVersions[lib]}`);
                 if (!packageJson.devDependencies) {
