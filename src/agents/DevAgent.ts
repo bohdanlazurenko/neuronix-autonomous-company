@@ -198,6 +198,15 @@ Text explanations mixed with JSON
      ✅ export default function MyComponent() { ... }
      ❌ export function MyComponent() { ... }
    - Импорт должен соответствовать экспорту:
+
+10. TYPESCRIPT ТИПЫ - СТРОГИЕ ПРАВИЛА:
+   - ВСЕГДА используй конкретные типы для props, не используй union types для callbacks
+   - Если компонент принимает два разных callback'а, создай два отдельных prop'а:
+     ✅ onAdd?: (item: Omit<Item, "id">) => void; onEdit?: (item: Item) => void;
+     ❌ onSubmit: (item: Item | Omit<Item, "id">) => void;
+   - Для форм с режимами создания/редактирования используй разные props или условные типы
+   - ВСЕГДА проверяй совместимость типов между родительским и дочерним компонентами
+   - Используй Partial<T> или Pick<T> вместо union types для опциональных полей:
      ✅ import MyComponent from '@/components/my-component'
      ❌ import { MyComponent } from '@/components/my-component' (если export default)
    - Для UI библиотек (shadcn/ui) в components/ui/* можно использовать named exports:
@@ -799,6 +808,24 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
             
             console.log(`[Dev Agent] ✅ Converted to default export: ${componentName}`);
           }
+        }
+        
+        // Fix TypeScript union type errors in props (Type 'A | B' is not assignable to type 'A')
+        // Common pattern: onSubmit prop with union type causing type mismatch
+        const unionTypeError = file.content.match(/onSubmit[:\s]*\([^)]*:\s*(\w+)\s*\|\s*Omit<\1,\s*["']id["']>\)\s*=>\s*void/);
+        if (unionTypeError) {
+          const typeName = unionTypeError[1];
+          console.log(`[Dev Agent] 🔧 Found problematic union type in ${file.path}: ${typeName} | Omit<${typeName}, "id">`);
+          
+          // Replace union type with separate props
+          // Example: onSubmit: (item: Item | Omit<Item, "id">) => void
+          // Becomes: onAdd?: (item: Omit<Item, "id">) => void; onEdit?: (item: Item) => void
+          file.content = file.content.replace(
+            /onSubmit[:\s]*\((\w+):\s*(\w+)\s*\|\s*Omit<\2,\s*["']id["']>\)\s*=>\s*void/g,
+            `onAdd?: (item: Omit<$2, "id">) => void\n  onEdit?: (item: $2) => void`
+          );
+          
+          console.log(`[Dev Agent] ✅ Split union type into separate onAdd/onEdit props in ${file.path}`);
         }
         
         // Check for tailwind-merge/clsx usage (various import styles)
