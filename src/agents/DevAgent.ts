@@ -193,11 +193,23 @@ Text explanations mixed with JSON
    - Если обычный CSS: создай минимальные стили
    - Всегда импортируй стили в layout.tsx
 
-9. ЗАПРЕЩЕНО:
+9. REACT КОМПОНЕНТЫ - EXPORTS:
+   - ВСЕГДА используй DEFAULT EXPORT для компонентов:
+     ✅ export default function MyComponent() { ... }
+     ❌ export function MyComponent() { ... }
+   - Импорт должен соответствовать экспорту:
+     ✅ import MyComponent from '@/components/my-component'
+     ❌ import { MyComponent } from '@/components/my-component' (если export default)
+   - Для UI библиотек (shadcn/ui) в components/ui/* можно использовать named exports:
+     export const Button = React.forwardRef<...>(...);
+     export { Button }
+
+10. ЗАПРЕЩЕНО:
    - localStorage/sessionStorage (используй серверные компоненты или API)
    - Неработающие импорты
    - Placeholder код
    - Устаревшие пути (pages/, _app.tsx)
+   - Несоответствие импортов и экспортов (import default для export named)
    - Синтаксические ошибки
    - Несуществующие зависимости
    - next.config.js БЕЗ module.exports (это ошибка!)
@@ -758,6 +770,37 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       
       // Scan for common library imports that might be missing from package.json
       if (file.path.endsWith('.tsx') || file.path.endsWith('.ts')) {
+        // Fix mismatched imports/exports in components
+        if (file.path.startsWith('components/') && !file.path.includes('/ui/')) {
+          // Check if component uses named export but should use default
+          const namedExportMatch = file.content.match(/^export\s+(function|const)\s+(\w+)/m);
+          const defaultExportMatch = file.content.match(/export\s+default/);
+          
+          if (namedExportMatch && !defaultExportMatch) {
+            const componentName = namedExportMatch[2];
+            console.log(`[Dev Agent] 🔧 Converting ${componentName} from named to default export in ${file.path}`);
+            
+            // Replace "export function Component" with "function Component" and add "export default Component" at end
+            if (namedExportMatch[1] === 'function') {
+              file.content = file.content.replace(
+                /^export\s+function\s+(\w+)/m,
+                'function $1'
+              );
+              // Add default export at the end if not present
+              if (!file.content.trim().endsWith(`export default ${componentName}`)) {
+                file.content = file.content.trim() + `\n\nexport default ${componentName}\n`;
+              }
+            } else if (namedExportMatch[1] === 'const') {
+              // For const, just add export default at the end
+              if (!file.content.includes(`export default ${componentName}`)) {
+                file.content = file.content.trim() + `\n\nexport default ${componentName}\n`;
+              }
+            }
+            
+            console.log(`[Dev Agent] ✅ Converted to default export: ${componentName}`);
+          }
+        }
+        
         // Check for tailwind-merge/clsx usage (various import styles)
         if (file.content.match(/from\s+['"]tailwind-merge['"]|require\(['"]tailwind-merge['"]\)/)) {
           console.log(`[Dev Agent] Found tailwind-merge usage in ${file.path}`);
