@@ -758,18 +758,23 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       
       // Scan for common library imports that might be missing from package.json
       if (file.path.endsWith('.tsx') || file.path.endsWith('.ts')) {
-        // Check for tailwind-merge/clsx usage
-        if (file.content.includes('tailwind-merge') || file.content.includes('from "tailwind-merge"')) {
+        // Check for tailwind-merge/clsx usage (various import styles)
+        if (file.content.match(/from\s+['"]tailwind-merge['"]|require\(['"]tailwind-merge['"]\)/)) {
+          console.log(`[Dev Agent] Found tailwind-merge usage in ${file.path}`);
           usedLibraries.add('tailwind-merge');
         }
-        if (file.content.includes('from "clsx"') || file.content.includes('clsx')) {
+        if (file.content.match(/from\s+['"]clsx['"]|require\(['"]clsx['"]\)/)) {
+          console.log(`[Dev Agent] Found clsx usage in ${file.path}`);
           usedLibraries.add('clsx');
         }
-        if (file.content.includes('class-variance-authority')) {
+        if (file.content.match(/from\s+['"]class-variance-authority['"]|require\(['"]class-variance-authority['"]\)/)) {
+          console.log(`[Dev Agent] Found class-variance-authority usage in ${file.path}`);
           usedLibraries.add('class-variance-authority');
         }
       }
     }
+    
+    console.log('[Dev Agent] Libraries detected:', Array.from(usedLibraries));
     
     // Auto-add missing dependencies to package.json
     if (usedLibraries.size > 0) {
@@ -779,6 +784,8 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
           const packageJson = JSON.parse(packageJsonFile.content);
           let modified = false;
           
+          console.log('[Dev Agent] Current dependencies:', Object.keys(packageJson.dependencies || {}));
+          
           // Add missing libraries
           const libraryVersions: Record<string, string> = {
             'tailwind-merge': '^2.5.4',
@@ -787,21 +794,33 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
           };
           
           for (const lib of usedLibraries) {
-            if (!packageJson.dependencies[lib]) {
-              console.log(`[Dev Agent] 🔧 Auto-adding missing dependency: ${lib}`);
+            if (!packageJson.dependencies || !packageJson.dependencies[lib]) {
+              console.log(`[Dev Agent] 🔧 Auto-adding missing dependency: ${lib} @ ${libraryVersions[lib]}`);
+              if (!packageJson.dependencies) {
+                packageJson.dependencies = {};
+              }
               packageJson.dependencies[lib] = libraryVersions[lib] || 'latest';
               modified = true;
+            } else {
+              console.log(`[Dev Agent] Dependency ${lib} already exists`);
             }
           }
           
           if (modified) {
             packageJsonFile.content = JSON.stringify(packageJson, null, 2);
             console.log('[Dev Agent] ✅ Auto-fix applied to package.json');
+            console.log('[Dev Agent] New dependencies:', Object.keys(packageJson.dependencies));
+          } else {
+            console.log('[Dev Agent] No package.json modifications needed');
           }
         } catch (error) {
           console.warn('[Dev Agent] Failed to parse package.json for auto-fix:', error);
         }
+      } else {
+        console.warn('[Dev Agent] ⚠️  package.json not found in files array!');
       }
+    } else {
+      console.log('[Dev Agent] No special libraries detected, skipping dependency auto-fix');
     }
     
     console.log('[Dev Agent] Auto-fix completed');
