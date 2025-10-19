@@ -401,15 +401,18 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
       console.log('[Dev Agent] Raw response is not pure JSON, will extract...');
     }
 
+    // IMPORTANT: Normalize BEFORE bracket matching to ensure proper string escaping
+    const normalizedText = this.normalizeJSON(text);
+
     // Strategy 2: Find JSON object boundaries (look for {"files": pattern)
     const jsonPattern = /\{\s*"files"\s*:\s*\[/;
-    const jsonMatch = text.search(jsonPattern);
+    const jsonMatch = normalizedText.search(jsonPattern);
     
     if (jsonMatch !== -1) {
       console.log('[Dev Agent] Found JSON start at position:', jsonMatch);
       
-      // Find matching closing brace by counting brackets
-      let jsonText = text.substring(jsonMatch);
+      // Extract from NORMALIZED text (with escaped newlines)
+      let jsonText = normalizedText.substring(jsonMatch);
       let braceCount = 0;
       let inString = false;
       let escapeNext = false;
@@ -491,7 +494,7 @@ ${plan.files.map((f) => `- ${f.path}: ${f.purpose}`).join('\n')}
     }
 
     // Strategy 3: Try to find JSON in code blocks
-    const codeBlockMatches = text.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g);
+    const codeBlockMatches = normalizedText.matchAll(/```(?:json)?\s*([\s\S]*?)\s*```/g);
     const blocks = Array.from(codeBlockMatches);
     
     if (blocks.length > 0) {
